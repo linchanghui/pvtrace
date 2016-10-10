@@ -12,12 +12,12 @@ import java.awt.BorderLayout
 //-----------------------------------------------------------------------------
 String          FUNC_HINT="th_init_initgls" //目标跟踪函数，也就是：跟踪目标线程中一定出现的函数
 int             FUNC_MAX_CALL_TIMES=6
-int             TRACE_MIN_DISTANCE=30
+int             TRACE_MIN_DISTANCE=12
 int             TRACE_MAX_LEVEL=20
 String          NM_COMMAND="nm -e /usr/local/bin/informix/bin/oninit1 -l -C"
 String          PATH_TRACE_LOG="/home/linchanghui/Downloads/pvtrace/pvtrace/oninit.trc"
 String          PATH_OF_DOT="trace.dot"
-String          PATH_OF_SVG="../uml/trace.svg"
+String          PATH_OF_SVG="trace.svg"
 
 //-----------------------------------------------------------------------------
 //全局变量定义
@@ -131,6 +131,7 @@ raw_lines.each{String line->
 }
 //移除调用次数超过FUNC_MAX_CALL_TIMES的调用记录(仅统计调用，不统计退出)
 Map <String, Integer> call_statistics=[:]
+Map <String, Integer> tmp_for_access_count = [:];
 log_lines.each{ Map<String, String> line->
     if(line["direct"]==">")
     {
@@ -139,17 +140,19 @@ log_lines.each{ Map<String, String> line->
             call_statistics[line["name"]]=0
         }
         call_statistics[line["name"]]++
-    }
-}
 
-Map <String, Integer> tmp_for_access_count = [:];
-log_lines.each { Map<String, String> line ->
-    if(FUNC_MAX_CALL_TIMES != -1 && call_statistics[line["name"]]<=FUNC_MAX_CALL_TIMES){
+        //上面的call_statistics为了后面过滤使用，下面的tmp_for_access_count为了被多次访问的节点改名
         if(tmp_for_access_count[line["name"]] == null) {
             tmp_for_access_count[line["name"]] = 0
         }
         tmp_for_access_count[line["name"]]++
+
         line["accessCount"] = tmp_for_access_count[line["name"]]
+    }
+}
+
+log_lines.each { Map<String, String> line ->
+    if(FUNC_MAX_CALL_TIMES != -1 && call_statistics[line["name"]]<=FUNC_MAX_CALL_TIMES){
 
         log_filtered.add(line)
     }
@@ -221,6 +224,8 @@ log_filtered.each{ Map<String, String> line ->
 
 //-----------------------------------------------------------------------------
 //转换函数调用日志： level, distance, kids_num, matched, brothers, kids
+//pair对应的匹配记录的下标
+//distance 进入函数和离开函数之间执行了多少步
 //-----------------------------------------------------------------------------
 int level = 0
 for(int i=0;i<log_filtered.size();i++){
@@ -248,14 +253,7 @@ for(int i=0;i<log_filtered.size();i++){
         level++
     }
 }
-//-----------------------------------------------------------------------------
-//生成调用说明TXT
-//-----------------------------------------------------------------------------
-//for(int i=0;i<log_filtered.size();i++){
-//    if(log_filtered[i].distance >= TRACE_MIN_DISTANCE && log_filtered[i].level <= TRACE_MAX_LEVEL) {
-//        println "  " * log_filtered[i].level + "${log_filtered[i].direct} ${log_filtered[i].name} ${log_filtered[i].module}/${log_filtered[i].file}"
-//    }
-//}
+
 
 //-----------------------------------------------------------------------------
 //生成DOT文件
@@ -277,7 +275,7 @@ for(int i=0;i<log_filtered.size();i++){
                     名字相同代表有子节点
                     a -> b1
                     b1 -> c
-                     */
+                    */
                     if( stack.peek() == oldToFunctionName) {
                         fromFunctionName = peekValue
                     }else {
@@ -285,7 +283,7 @@ for(int i=0;i<log_filtered.size();i++){
                     名字不相同代表没有子节点
                     a -> b1
                     c -> d
-                     */
+                    */
                         fromFunctionName = stack.peek()
                     }
                     peekFlag = false
@@ -297,8 +295,8 @@ for(int i=0;i<log_filtered.size();i++){
                 if(log_filtered[i].accessCount == 1 ) {
                     toFunctionName = log_filtered[i].name
                 }else{
-                    //一旦toFunctionName是需要特殊处理的，就对peekFlag标志位赋值，并保留下一个fromFunctionName可能的值peekValue，oldToFunctionName是为了处理万一这个toFunctionName没有再调用别的函数，则不需要修改下一个fromFunctionName
-
+                    //一旦toFunctionName是需要特殊处理的,就对peekFlag标志位赋值
+                    //并保留下一个fromFunctionName可能的值peekValue，oldToFunctionName是为了处理万一这个toFunctionName没有再调用别的函数，则不需要修改下一个fromFunctionName
                     toFunctionName = (log_filtered[i].name+"_"+log_filtered[i].accessCount)
                     peekValue = toFunctionName
                     oldToFunctionName = log_filtered[i].name

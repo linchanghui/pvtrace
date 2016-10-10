@@ -38,7 +38,7 @@ for(int i=0; i<lines.size();i++)
     String previous = ""
     //通过正则将参数列表删除，否则可能出现参数位置不对
     //    List<String> inputs = [
-    //            //[INPUT]                                     [OUTPUT]
+    //            //[INPUT]                                     [edgeOutput]
     //            "csmQueryBlockInit(db2UCinterface*)",         //csmQueryBlockInit
     //            "closeHandle(void**)",                        //closeHandle
     //            "CUdbgVar::GetReportInfo(int*, int*)",        //CUdbgVar::GetReportInfo
@@ -242,7 +242,7 @@ for(int i=0;i<log_filtered.size();i++){
             log_filtered[j].pair = i
 
             log_filtered[i].distance = j-i
-            log_filtered[j].distance =j-i
+            log_filtered[j].distance = j-i
 
             //寻找最近的匹配，一定要break; 否则同一个函数调用多次，会引起关系错乱
             break;
@@ -258,9 +258,11 @@ for(int i=0;i<log_filtered.size();i++){
 //-----------------------------------------------------------------------------
 //生成DOT文件
 //-----------------------------------------------------------------------------
-Stack <String> stack=[]
-List<String> output=[]
+Stack <Map> stack=[]
+List<String> edgeOutput=[]
+Set<String> nodeOutput = []
 
+List<String> output = []
 int j=1;
 boolean peekFlag = false
 String peekValue
@@ -276,7 +278,7 @@ for(int i=0;i<log_filtered.size();i++){
                     a -> b1
                     b1 -> c
                     */
-                    if( stack.peek() == oldToFunctionName) {
+                    if( (stack.peek())["name"] == oldToFunctionName) {
                         fromFunctionName = peekValue
                     }else {
                     /*
@@ -284,11 +286,11 @@ for(int i=0;i<log_filtered.size();i++){
                     a -> b1
                     c -> d
                     */
-                        fromFunctionName = stack.peek()
+                        fromFunctionName = (stack.peek())["name"]
                     }
                     peekFlag = false
                 }else {
-                    fromFunctionName = stack.peek();
+                    fromFunctionName = (stack.peek())["name"]
                 }
 
                 String toFunctionName
@@ -303,16 +305,19 @@ for(int i=0;i<log_filtered.size();i++){
                     peekFlag = true
                 }
 
-                output << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
+                edgeOutput << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
+                //这里去把所有的节点记录下来
+                nodeOutput << """    ${toFunctionName} [tooltip="${log_filtered[i]}"];"""
+                nodeOutput << """    ${fromFunctionName} [tooltip="${stack.peek()}"];"""
+
             }
 
-            stack.push(log_filtered[i].name)
+            stack.push(log_filtered[i])
         }else{
             stack.pop()
         }
     }
 }
-
 output.add(0,"digraph trace{")
 output.add(1,"""
     ranksep=2;
@@ -322,11 +327,13 @@ output.add(1,"""
 """)
 //        {rank=same; init_sqscb; sq_info; sq_execute; p_smquery; qblk2cb; sqrewr; sqoptim; sq_open;}
 //        sqmain [tooltip="SQL:sqmain.c"]; /* 用于给节点添加注释 (SVG Only) */
-
+output.addAll(nodeOutput)
+output.addAll(edgeOutput)
 output.add("}")
 
 file=new File(PATH_OF_DOT)
 content =""
+
 output.each{String line->
     content = content+line + "\n"
 
@@ -334,4 +341,8 @@ output.each{String line->
 file.write(content)
 
 command = "dot ${PATH_OF_DOT} -Tsvg -o ${PATH_OF_SVG}"
-command.execute()
+def sout = new StringBuilder(), serr = new StringBuilder()
+def proc = command.execute()
+proc.consumeProcessOutput(sout, serr)
+proc.waitForOrKill(1000)
+println "out> $sout err> $serr"

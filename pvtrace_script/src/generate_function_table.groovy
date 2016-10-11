@@ -15,10 +15,12 @@ String          START_FUNC=null //不追踪整个堆栈，而是从这个方法�
 int             FUNC_MAX_CALL_TIMES=6
 int             TRACE_MIN_DISTANCE=12
 int             TRACE_MAX_LEVEL=20
-String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
+//String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
+String          EXEC_PATH = "/home/linchanghui/Documents/oninit"
+
 String          NM_COMMAND="nm -e ${EXEC_PATH} -l -C"
 
-String          PATH_TRACE_LOG="oninit.trc"
+String          PATH_TRACE_LOG="oninit_backup.trc"
 String          PATH_OF_DOT="trace.dot"
 String          PATH_OF_SVG="trace.svg"
 
@@ -27,8 +29,8 @@ String          PATH_OF_SVG="trace.svg"
 //-----------------------------------------------------------------------------
 Map<String, Map<String, String>> functions=[:]
 List<String> raw_lines=[]
-List<Map<String,String>> log_lines=[]
-List<Map<String,String>> log_filtered=[]
+List<Map<String,?>> log_lines=[]
+List<Map<String,?>> log_filtered=[]
 
 //-----------------------------------------------------------------------------
 //输入参数处理部分
@@ -214,17 +216,10 @@ log_lines.each{ Map<String, String> line->
     }
 }
 
-int start = 0
 log_lines.each { Map<String, String> line ->
     if(FUNC_MAX_CALL_TIMES != -1 && call_statistics[line["name"]]<=FUNC_MAX_CALL_TIMES){
-        //todo 通过加标志位，在这里去做拦截，找到关键函数名且为>则加1,为<则减1，大于零则记录
-//        if(START_FUNC != null && START_FUNC == line["name"] && line["direct"]==">") {
-//            start++
-//        }
-//        if(START_FUNC != null && START_FUNC == line["name"] && line["direct"]=="<") {
-//            start--
-//        }
-//        if(START_FUNC == null || (START_FUNC != null && start>0))
+        //本来正在这里做函数名开始的追踪，但是这个堆栈信息可能不全
+
         log_filtered.add(line)
     }
 }
@@ -233,7 +228,6 @@ log_lines.each { Map<String, String> line ->
 //对调用日志进行匹配检查和补偿(自动完成匹配)
 //-----------------------------------------------------------------------------
 for(int i=0;i<log_filtered.size(); i++){
-//    if(log_filtered[i].direct == ">") log_filtered[i].accessCount++
     if(log_filtered[i].match==null && log_filtered[i].direct == ">"){
         for(int j=i+1;j<log_filtered.size();j++){
             if(log_filtered[j].name == log_filtered[i].name
@@ -281,16 +275,20 @@ log_filtered.addAll(patched_log.reverse())
 int line_total =0
 int line_match =0
 int line_close =0
+
+
+int func_start = 0
+int func_end = 0
 log_filtered.each{ Map<String, String> line ->
+    if(START_FUNC != null && func_start == 0 && line["name"] == START_FUNC && line["direct"] == ">") func_start = line_total
+    if(START_FUNC != null && line["name"] == START_FUNC && line["direct"] == "<") func_end = line_total
+
     line_total++
     if(line["match"]==true) line_match++
     if(line["close"]==true) line_close++
     //println line
 }
 
-//println line_total
-//println line_match
-//println line_close
 
 
 //-----------------------------------------------------------------------------
@@ -324,6 +322,14 @@ for(int i=0;i<log_filtered.size();i++){
         level++
     }
 }
+////-----------------------------------------------------------------------------
+////生成调用说明TXT
+////-----------------------------------------------------------------------------
+//for(int i=0;i<log_filtered.size();i++){
+//    if(log_filtered[i].distance >= TRACE_MIN_DISTANCE && log_filtered[i].level <= TRACE_MAX_LEVEL) {
+//        println "  " * log_filtered[i].level + "${log_filtered[i].direct} ${log_filtered[i].name} ${log_filtered[i].module}/${log_filtered[i].file}"
+//    }
+//}
 
 
 //-----------------------------------------------------------------------------
@@ -340,23 +346,24 @@ String peekValue
 String oldToFunctionName
 for(int i=0;i<log_filtered.size();i++){
     if(log_filtered[i].distance >= TRACE_MIN_DISTANCE && log_filtered[i].level <= TRACE_MAX_LEVEL) {
+        if(START_FUNC != null && (i < func_start || i > func_end)) continue
         if(log_filtered[i].direct == ">") {
             if(stack.empty()==false){
                 String fromFunctionName
                 if(peekFlag) {
-                    /*
-                    名字相同代表有子节点
-                    a -> b1
-                    b1 -> c
-                    */
                     if( (stack.peek())["name"] == oldToFunctionName) {
+                        /*
+                       名字相同代表有子节点
+                       a -> b1
+                       b1 -> c
+                       */
                         fromFunctionName = peekValue
                     }else {
-                    /*
-                    名字不相同代表没有子节点
-                    a -> b1
-                    c -> d
-                    */
+                        /*
+                        名字不相同代表没有子节点
+                        a -> b1
+                        c -> d
+                        */
                         fromFunctionName = (stack.peek())["name"]
                     }
                     peekFlag = false
@@ -376,10 +383,10 @@ for(int i=0;i<log_filtered.size();i++){
                     peekFlag = true
                 }
 
-                edgeOutput << """    ${stack.peek().name} -> ${log_filtered[i].name} [label="${j++}"];"""
+                edgeOutput << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
                 //这里去把所有的节点记录下来
-//                nodeOutput << """    ${toFunctionName} [tooltip="${log_filtered[i]}"];"""
-//                nodeOutput << """    ${fromFunctionName} [tooltip="${stack.peek()}"];"""
+                nodeOutput << """    ${toFunctionName} [tooltip="${log_filtered[i]}"];"""
+                nodeOutput << """    ${fromFunctionName} [tooltip="${stack.peek()}"];"""
 
             }
 
@@ -397,7 +404,7 @@ output.add(1,"""
 
 """)
 
-//output.addAll(nodeOutput)
+output.addAll(nodeOutput)
 output.addAll(edgeOutput)
 output.add("}")
 
@@ -410,7 +417,7 @@ output.each{String line->
 }
 file.write(content)
 
-command = "dot ${PATH_OF_DOT} -Tsvg -o ${PATH_OF_SVG}"
+command = "dot ${PATH_OF_DOT} -Tsvg -o ${new Date().format( 'yyyyMMddHHmmSS' )}_${PATH_OF_SVG}"
 
 proc = command.execute()
 //proc.consumeProcessOutput(sout, serr)

@@ -11,21 +11,84 @@ import java.awt.BorderLayout
 //全局配置定义
 //-----------------------------------------------------------------------------
 String          FUNC_HINT="th_init_initgls" //目标跟踪函数，也就是：跟踪目标线程中一定出现的函数
+String          START_FUNC=null //不追踪整个堆栈，而是从这个方法开始追踪
 int             FUNC_MAX_CALL_TIMES=6
 int             TRACE_MIN_DISTANCE=12
 int             TRACE_MAX_LEVEL=20
-String          NM_COMMAND="nm -e /usr/local/bin/informix/bin/oninit1 -l -C"
-String          PATH_TRACE_LOG="/home/linchanghui/Downloads/pvtrace/pvtrace/oninit.trc"
+String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
+String          NM_COMMAND="nm -e ${EXEC_PATH} -l -C"
+
+String          PATH_TRACE_LOG="oninit.trc"
 String          PATH_OF_DOT="trace.dot"
 String          PATH_OF_SVG="trace.svg"
 
 //-----------------------------------------------------------------------------
 //全局变量定义
-//---------------------------------------------------dd--------------------------
+//-----------------------------------------------------------------------------
 Map<String, Map<String, String>> functions=[:]
 List<String> raw_lines=[]
 List<Map<String,String>> log_lines=[]
 List<Map<String,String>> log_filtered=[]
+
+//-----------------------------------------------------------------------------
+//输入参数处理部分
+//-----------------------------------------------------------------------------
+def cli
+cli = new CliBuilder().with {
+    usage = 'program [options] <arguments>'
+    header = 'Options:'
+    footer = '-' * width
+    c(args: 1, argName: 'FUNC_MAX_CALL_TIMES', "FUNC_MAX_CALL_TIMES (XXXXXXXXX)")
+    h(args: 1, argName: 'FUNC_HINT', "FUNC_HINT (XXXXXXXXX)")
+    d(args: 1, argName: 'TRACE_MIN_DISTANCE', "TRACE_MIN_DISTANCE (XXXXXXXXX)")
+    l(args: 1, argName: 'TRACE_MAX_LEVEL', "TRACE_MAX_LEVEL (XXXXXXXXX)")
+    e(args: 1, argName: 'EXEC_PATH', "EXEC_PATH (XXXXXXXXX)")
+    tl(args: 1, argName: 'PATH_TRACE_LOG', "PATH_TRACE_LOG (XXXXXXXXX)")
+    dot(args: 1, argName: 'PATH_OF_DOT', "PATH_OF_DOT (XXXXXXXXX)")
+    svg(args: 1, argName: 'PATH_OF_SVG', "PATH_OF_SVG (XXXXXXXXX)")
+    s(args: 1, argName: 'START_FUNC', "START_FUNC (XXXXXXXXX)")
+
+    def options = parse(args)
+    options || System.exit(1)
+
+    parse(args) ?: System.exit(1)
+}
+try{
+    if(cli.c) FUNC_MAX_CALL_TIMES = cli.c
+    if(cli.h) FUNC_HINT = cli.h
+    if(cli.d) TRACE_MIN_DISTANCE = cli.d
+    if(cli.l) TRACE_MAX_LEVEL = cli.l
+    if(cli.e) {
+        EXEC_PATH = cli.e
+        NM_COMMAND="nm -e ${EXEC_PATH} -l -C"
+    }
+    if(cli.tl) PATH_TRACE_LOG = cli.tl
+    if(cli.dot) PATH_OF_DOT = cli.dot
+    if(cli.svg) FUNC_MAX_CALL_TIMES = cli.svg
+    if(cli.s) START_FUNC = cli.s
+
+}catch (Exception e) {
+    exitWithMessage(e.printStackTrace())
+}
+
+
+
+//-----------------------------------------------------------------------------
+//执行shell命令所需的参数
+//-----------------------------------------------------------------------------
+def proc
+def sout = new StringBuilder(), serr = new StringBuilder()
+void exitWithMessage(String message) {
+    System.err.println(message)
+    System.exit(1)
+}
+
+proc = "userid root chown linchanghui:linchanghui ${PATH_TRACE_LOG}".execute()
+proc.waitForProcessOutput(sout, serr)
+if("$sout".length() != 0 || "${serr}".length() != 0) {
+    exitWithMessage("out> $sout err> $serr")
+}
+
 //-----------------------------------------------------------------------------
 //获取全局函数地址、名称、文件映射表
 //-----------------------------------------------------------------------------
@@ -108,7 +171,7 @@ new File(PATH_TRACE_LOG).eachLine {String line->
 }
 //转换成MAP
 raw_lines.each{String line->
-    //12:28:35:298,21928,<,61a75a,1000050
+    //<,61a75a,1000050
     String[] fields=line.split(",")
 
     Map<String, String> log=[
@@ -151,9 +214,17 @@ log_lines.each{ Map<String, String> line->
     }
 }
 
+int start = 0
 log_lines.each { Map<String, String> line ->
     if(FUNC_MAX_CALL_TIMES != -1 && call_statistics[line["name"]]<=FUNC_MAX_CALL_TIMES){
-
+        //todo 通过加标志位，在这里去做拦截，找到关键函数名且为>则加1,为<则减1，大于零则记录
+//        if(START_FUNC != null && START_FUNC == line["name"] && line["direct"]==">") {
+//            start++
+//        }
+//        if(START_FUNC != null && START_FUNC == line["name"] && line["direct"]=="<") {
+//            start--
+//        }
+//        if(START_FUNC == null || (START_FUNC != null && start>0))
         log_filtered.add(line)
     }
 }
@@ -305,10 +376,10 @@ for(int i=0;i<log_filtered.size();i++){
                     peekFlag = true
                 }
 
-                edgeOutput << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
+                edgeOutput << """    ${stack.peek().name} -> ${log_filtered[i].name} [label="${j++}"];"""
                 //这里去把所有的节点记录下来
-                nodeOutput << """    ${toFunctionName} [tooltip="${log_filtered[i]}"];"""
-                nodeOutput << """    ${fromFunctionName} [tooltip="${stack.peek()}"];"""
+//                nodeOutput << """    ${toFunctionName} [tooltip="${log_filtered[i]}"];"""
+//                nodeOutput << """    ${fromFunctionName} [tooltip="${stack.peek()}"];"""
 
             }
 
@@ -325,9 +396,8 @@ output.add(1,"""
     node [shape=plaintext, fontsize=20, fontname="Microsoft Yahei"];
 
 """)
-//        {rank=same; init_sqscb; sq_info; sq_execute; p_smquery; qblk2cb; sqrewr; sqoptim; sq_open;}
-//        sqmain [tooltip="SQL:sqmain.c"]; /* 用于给节点添加注释 (SVG Only) */
-output.addAll(nodeOutput)
+
+//output.addAll(nodeOutput)
 output.addAll(edgeOutput)
 output.add("}")
 
@@ -341,8 +411,12 @@ output.each{String line->
 file.write(content)
 
 command = "dot ${PATH_OF_DOT} -Tsvg -o ${PATH_OF_SVG}"
-def sout = new StringBuilder(), serr = new StringBuilder()
-def proc = command.execute()
-proc.consumeProcessOutput(sout, serr)
-proc.waitForOrKill(1000)
-println "out> $sout err> $serr"
+
+proc = command.execute()
+//proc.consumeProcessOutput(sout, serr)
+proc.waitForProcessOutput(sout, serr)
+if("$sout".length() != 0 || "${serr}".length() != 0) {
+    println "out> $sout err> $serr"
+    exitWithMessage("out> $sout err> $serr")
+}
+

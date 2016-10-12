@@ -206,13 +206,7 @@ log_lines.each{ Map<String, String> line->
         }
         call_statistics[line["name"]]++
 
-        //上面的call_statistics为了后面过滤使用，下面的tmp_for_access_count为了被多次访问的节点改名
-        if(tmp_for_access_count[line["name"]] == null) {
-            tmp_for_access_count[line["name"]] = 0
-        }
-        tmp_for_access_count[line["name"]]++
 
-        line["accessCount"] = tmp_for_access_count[line["name"]]
     }
 }
 
@@ -260,6 +254,7 @@ for(int i=0;i<log_filtered.size();i++){
         patch.putAll(log_filtered[i])
         patch["direct"]="<"
         patch["match"]=true
+        patch["fixed"]=true
 
         patched_log.add(patch)
 
@@ -298,12 +293,19 @@ log_filtered.each{ Map<String, String> line ->
 //-----------------------------------------------------------------------------
 int level = 0
 for(int i=0;i<log_filtered.size();i++){
+    int jump = 0
     if(log_filtered[i].direct == "<"){
         level--
     }
     if(log_filtered[i].direct == "<" || log_filtered[i].match!=true) continue
     for(int j=i+1;j<log_filtered.size();j++){
+        //处理特殊情况，自己调用了自己，所以在这时候的匹配要跳过
+        if(log_filtered[i].name == log_filtered[j].name && log_filtered[j].direct == ">") jump++;
         if(log_filtered[i].name == log_filtered[j].name && log_filtered[j].direct == "<"){
+            if(jump > 0) {
+                jump--
+                continue
+            }
             log_filtered[i].level = level
             log_filtered[j].level = level
 
@@ -322,15 +324,32 @@ for(int i=0;i<log_filtered.size();i++){
         level++
     }
 }
-////-----------------------------------------------------------------------------
-////生成调用说明TXT
-////-----------------------------------------------------------------------------
-//for(int i=0;i<log_filtered.size();i++){
-//    if(log_filtered[i].distance >= TRACE_MIN_DISTANCE && log_filtered[i].level <= TRACE_MAX_LEVEL) {
-//        println "  " * log_filtered[i].level + "${log_filtered[i].direct} ${log_filtered[i].name} ${log_filtered[i].module}/${log_filtered[i].file}"
-//    }
-//}
+//-----------------------------------------------------------------------------
+//生成调用说明TXT
+//-----------------------------------------------------------------------------
+for(int i=0;i<log_filtered.size();i++){
+    if(log_filtered[i].distance >= TRACE_MIN_DISTANCE && log_filtered[i].level <= TRACE_MAX_LEVEL) {
 
+        println "  " * log_filtered[i].level + "${log_filtered[i].direct} ${log_filtered[i].name} ${log_filtered[i].module}/${log_filtered[i].file}"
+    }
+}
+
+
+for(int i=0;i<log_filtered.size();i++) {
+    if (log_filtered[i].distance < TRACE_MIN_DISTANCE || log_filtered[i].level > TRACE_MAX_LEVEL) {
+        log_filtered[i]["delete"] = true
+    }
+    //为进入，且判断是否正常删除
+    if(log_filtered[i]["direct"]==">" && (log_filtered[i]["delete"] == null || !log_filtered[i]["delete"])) {
+        //上面的call_statistics为了后面过滤使用，下面的tmp_for_access_count为了被多次访问的节点改名
+        if(tmp_for_access_count[log_filtered[i]["name"]] == null) {
+            tmp_for_access_count[log_filtered[i]["name"]] = 0
+        }
+        tmp_for_access_count[log_filtered[i]["name"]]++
+
+        log_filtered[i]["accessCount"] = tmp_for_access_count[log_filtered[i]["name"]]
+    }
+}
 
 //-----------------------------------------------------------------------------
 //生成DOT文件
@@ -339,14 +358,24 @@ Stack <Map> stack=[]
 List<String> edgeOutput=[]
 Set<String> nodeOutput = []
 
+int start = 0
 List<String> output = []
 int j=1;
 boolean peekFlag = false
 String peekValue
 String oldToFunctionName
 for(int i=0;i<log_filtered.size();i++){
-    if(log_filtered[i].distance >= TRACE_MIN_DISTANCE && log_filtered[i].level <= TRACE_MAX_LEVEL) {
-        if(START_FUNC != null && (i < func_start || i > func_end)) continue
+
+    //todo 通过加标志位，在这里去做拦截，找到关键函数名且为>则加1,为<则减1，大于零则记录
+    if(START_FUNC != null && START_FUNC == log_filtered[i]["name"] && log_filtered[i]["direct"]==">") {
+        start++
+    }
+    if(START_FUNC != null && START_FUNC == log_filtered[i]["name"] && log_filtered[i]["direct"]=="<") {
+        start--
+    }
+
+    if(START_FUNC != null && start<1) continue
+    if (log_filtered[i]["delete"] != null && log_filtered[i]["delete"]) continue
         if(log_filtered[i].direct == ">") {
             if(stack.empty()==false){
                 String fromFunctionName
@@ -392,9 +421,13 @@ for(int i=0;i<log_filtered.size();i++){
 
             stack.push(log_filtered[i])
         }else{
-            stack.pop()
+//            if(!stack.empty()) {
+                stack.pop()
+//            }else {
+//                println "dddd"
+//            }
         }
-    }
+//    }
 }
 output.add(0,"digraph trace{")
 output.add(1,"""

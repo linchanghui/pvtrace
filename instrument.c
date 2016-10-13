@@ -10,8 +10,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <libconfig.h>
-#include <hiredis.h>
+//#include <libconfig.h>
+//#include <hiredis.h>
 #include <zlog.h>
 
 #define REDIS_KEY "redis_key"
@@ -35,12 +35,12 @@ int (*callback)() = NULL;
 
 char *config_file_name = "/config.txt";
 char *redis_key;
-config_t cfg;
+//config_t cfg;
 /*Returns all parameters in this structure */
-config_setting_t *setting;
+//config_setting_t *setting;
 
-redisContext *redis_context;
-redisReply *reply;
+//redisContext *redis_context;
+//redisReply *reply;
 
 
 zlog_category_t *c;
@@ -55,21 +55,21 @@ void main_constructor(void) {
 //    if (fp == NULL) exit(-1);
 
     /*Initialization */
-    config_init(&cfg);
-
-    /* Read the file. If there is an error, report it and exit. */
-    if (!config_read_file(&cfg, config_file_name)) {
-        printf("\n%s:%d - %s", config_error_file(&cfg), config_error_line(&cfg), config_error_text(&cfg));
-        config_destroy(&cfg);
-        return ;
-    }
+//    config_init(&cfg);
+//
+//    /* Read the file. If there is an error, report it and exit. */
+//    if (!config_read_file(&cfg, config_file_name)) {
+//        printf("\n%s:%d - %s", config_error_file(&cfg), config_error_line(&cfg), config_error_text(&cfg));
+//        config_destroy(&cfg);
+//        return ;
+//    }
 
     /* Get the configuration file name. */
-    if (config_lookup_string(&cfg, REDIS_KEY, &redis_key))
-        printf("\nFile Type: %s\n", redis_key);
-    else
-        printf("\nNo %s setting in configuration file.", REDIS_KEY);
-    config_destroy(&cfg);
+//    if (config_lookup_string(&cfg, REDIS_KEY, &redis_key))
+//        printf("\nFile Type: %s\n", redis_key);
+//    else
+//        printf("\nNo %s setting in configuration file.", REDIS_KEY);
+//    config_destroy(&cfg);
 
     //redis connect init
 //    struct timeval timeout = { 1, 500000 }; // 1.5 seconds
@@ -104,7 +104,7 @@ void main_deconstructor(void) {
 void __cyg_profile_func_enter( void *this, void *callsite )
 {
 
-    printf("%x:in\n",(int *)this);
+//    printf("%x:in\n",(int *)this);
 //    if(redis_context != NULL && redis_key != NULL) {
         if(access("/tmp/IFX_TRACE", 0) != 0) return;
 
@@ -140,7 +140,7 @@ void __cyg_profile_func_enter( void *this, void *callsite )
 
 void __cyg_profile_func_exit( void *this, void *callsite )
 {
-    printf("%x:out\n",(int *)this);
+//    printf("%x:out\n",(int *)this);
 //    if(redis_context != NULL && redis_key != NULL) {
         if(access("/tmp/IFX_TRACE", 0) != 0) return;
 

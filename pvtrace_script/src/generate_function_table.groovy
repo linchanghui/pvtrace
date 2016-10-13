@@ -15,6 +15,9 @@ String          START_FUNC=null //不追踪整个堆栈，而是从这个方法�
 int             FUNC_MAX_CALL_TIMES=6
 int             TRACE_MIN_DISTANCE=12
 int             TRACE_MAX_LEVEL=20
+int             WEIGHT_LEVEL_1=7
+int             WEIGHT_LEVEL_2=15
+
 //String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
 String          EXEC_PATH = "/home/linchanghui/Documents/oninit"
 
@@ -56,10 +59,10 @@ cli = new CliBuilder().with {
     parse(args) ?: System.exit(1)
 }
 try{
-    if(cli.c) FUNC_MAX_CALL_TIMES = cli.c
+    if(cli.c) FUNC_MAX_CALL_TIMES = cli.c.toInteger()
     if(cli.h) FUNC_HINT = cli.h
-    if(cli.d) TRACE_MIN_DISTANCE = cli.d
-    if(cli.l) TRACE_MAX_LEVEL = cli.l
+    if(cli.d) TRACE_MIN_DISTANCE = cli.d.toInteger()
+    if(cli.l) TRACE_MAX_LEVEL = cli.l.toInteger()
     if(cli.e) {
         EXEC_PATH = cli.e
         NM_COMMAND="nm -e ${EXEC_PATH} -l -C"
@@ -180,6 +183,7 @@ raw_lines.each{String line->
             //time: fields[0],
             //pid: fields[1],
             direct: fields[0],
+            weight: 0,
             accessCount: 0
             //thread: fields[4]
     ]
@@ -209,11 +213,11 @@ log_lines.each{ Map<String, String> line->
 
     }
 }
-
+//-----------------------------------------------------------------------------
+//根据方法的被调用次数，做过滤，调用次数太多的不记录
+//-----------------------------------------------------------------------------
 log_lines.each { Map<String, String> line ->
     if(FUNC_MAX_CALL_TIMES != -1 && call_statistics[line["name"]]<=FUNC_MAX_CALL_TIMES){
-        //本来正在这里做函数名开始的追踪，但是这个堆栈信息可能不全
-
         log_filtered.add(line)
     }
 }
@@ -272,11 +276,7 @@ int line_match =0
 int line_close =0
 
 
-int func_start = 0
-int func_end = 0
 log_filtered.each{ Map<String, String> line ->
-    if(START_FUNC != null && func_start == 0 && line["name"] == START_FUNC && line["direct"] == ">") func_start = line_total
-    if(START_FUNC != null && line["name"] == START_FUNC && line["direct"] == "<") func_end = line_total
 
     line_total++
     if(line["match"]==true) line_match++
@@ -334,20 +334,41 @@ for(int i=0;i<log_filtered.size();i++){
     }
 }
 
-
+//-----------------------------------------------------------------------------
+//根据这个函数的跨度DISTANCE和层级去过过滤，顺便再做一个为多次访问的节点改名的临时数组
+//-----------------------------------------------------------------------------
 for(int i=0;i<log_filtered.size();i++) {
-    if (log_filtered[i].distance < TRACE_MIN_DISTANCE || log_filtered[i].level > TRACE_MAX_LEVEL) {
-        log_filtered[i]["delete"] = true
+    Map item = log_filtered[i]
+    if (item.distance < TRACE_MIN_DISTANCE || item.level > TRACE_MAX_LEVEL) {
+        item["delete"] = true
     }
     //为进入，且判断是否正常删除
-    if(log_filtered[i]["direct"]==">" && (log_filtered[i]["delete"] == null || !log_filtered[i]["delete"])) {
+    if(item["direct"]==">" && (item["delete"] == null || !item["delete"])) {
         //上面的call_statistics为了后面过滤使用，下面的tmp_for_access_count为了被多次访问的节点改名
-        if(tmp_for_access_count[log_filtered[i]["name"]] == null) {
-            tmp_for_access_count[log_filtered[i]["name"]] = 0
+        if(tmp_for_access_count[item["name"]] == null) {
+            tmp_for_access_count[item["name"]] = 0
         }
-        tmp_for_access_count[log_filtered[i]["name"]]++
+        tmp_for_access_count[item["name"]]++
 
-        log_filtered[i]["accessCount"] = tmp_for_access_count[log_filtered[i]["name"]]
+        item["accessCount"] = tmp_for_access_count[item["name"]]
+    }
+}
+
+//-----------------------------------------------------------------------------
+//下面开始根据字节点计算权重,如果权重大于标准，则对import_level字段赋值
+//-----------------------------------------------------------------------------
+for(int i=0;i<log_filtered.size();i++) {
+    Map item = log_filtered[i]
+
+    for (int start = i; start <= item.pair; start++) {
+        Map son_item = log_filtered[start]
+        if (son_item["direct"] == ">" && (son_item["delete"] == null || !son_item["delete"]) && son_item.level == (item.level + 1))
+            item.weight = item.weight + 1
+    }
+    if(item.weight != null && item.weight >= WEIGHT_LEVEL_1 && item.weight < WEIGHT_LEVEL_2) {
+        item.color = "blue"
+    }else if(item.weight != null && item.weight >= WEIGHT_LEVEL_2) {
+        item.color = "red"
     }
 }
 
@@ -414,8 +435,8 @@ for(int i=0;i<log_filtered.size();i++){
 
                 edgeOutput << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
                 //这里去把所有的节点记录下来
-                nodeOutput << """    ${toFunctionName} [tooltip="${log_filtered[i]}"];"""
-                nodeOutput << """    ${fromFunctionName} [tooltip="${stack.peek()}"];"""
+                nodeOutput << """    ${toFunctionName} [${log_filtered[i].color == null?"":"""fontcolor="${log_filtered[i].color}","""} tooltip="${log_filtered[i]}"];"""
+                nodeOutput << """    ${fromFunctionName} [${stack.peek().color == null?"":"""fontcolor="${stack.peek().color}","""}  tooltip="${stack.peek()}"];"""
 
             }
 

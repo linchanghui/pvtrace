@@ -23,7 +23,7 @@ String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
 
 String          NM_COMMAND="nm -e ${EXEC_PATH} -l -C"
 
-String          PATH_TRACE_LOG="oninit_backup.trc"
+String          PATH_TRACE_LOG="oninit.trc"
 String          PATH_OF_DOT="trace.dot"
 String          PATH_OF_SVG="trace.svg"
 

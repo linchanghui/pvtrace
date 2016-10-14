@@ -1,5 +1,4 @@
 # pvtrace
-根据pvtrace的思想，用groovy实现
 
 ## 介绍
 *  首先修改了mt.c使外部的libinstrument.so可以获取到内部的tid和pid.

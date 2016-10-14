@@ -18,8 +18,8 @@ int             TRACE_MAX_LEVEL=20
 int             WEIGHT_LEVEL_1=6
 int             WEIGHT_LEVEL_2=13
 
-//String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
-String          EXEC_PATH = "/home/linchanghui/Documents/oninit"
+String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
+//String          EXEC_PATH = "/home/linchanghui/Documents/oninit"
 
 String          NM_COMMAND="nm -e ${EXEC_PATH} -l -C"
 
@@ -88,7 +88,7 @@ void exitWithMessage(String message) {
     System.exit(1)
 }
 
-proc = "userid root chown linchanghui:linchanghui ${PATH_TRACE_LOG}".execute()
+proc = "userid root chown informix:informix ${PATH_TRACE_LOG}".execute()
 proc.waitForProcessOutput(sout, serr)
 if("$sout".length() != 0 || "${serr}".length() != 0) {
     exitWithMessage("out> $sout err> $serr")
@@ -365,10 +365,13 @@ for(int i=0;i<log_filtered.size();i++) {
         if (son_item["direct"] == ">" && (son_item["delete"] == null || !son_item["delete"]) && son_item.level == (item.level + 1))
             item.weight = item.weight + 1
     }
+    String filename
     if(item.weight != null && item.weight >= WEIGHT_LEVEL_1 && item.weight < WEIGHT_LEVEL_2) {
         item.color = "red"
+        item.url = "file://"+System.getProperty("user.dir");
     }else if(item.weight != null && item.weight >= WEIGHT_LEVEL_2) {
         item.color = "blue"
+        item.url = "file://"+System.getProperty("user.dir");
     }
 }
 
@@ -482,4 +485,6 @@ if("$sout".length() != 0 || "${serr}".length() != 0) {
     println "out> $sout err> $serr"
     exitWithMessage("out> $sout err> $serr")
 }
+
+//
 

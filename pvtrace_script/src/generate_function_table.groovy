@@ -15,8 +15,8 @@ String          START_FUNC=null //不追踪整个堆栈，而是从这个方法�
 int             FUNC_MAX_CALL_TIMES=6
 int             TRACE_MIN_DISTANCE=12
 int             TRACE_MAX_LEVEL=20
-int             WEIGHT_LEVEL_1=7
-int             WEIGHT_LEVEL_2=15
+int             WEIGHT_LEVEL_1=6
+int             WEIGHT_LEVEL_2=13
 
 //String          EXEC_PATH = "/usr/local/bin/informix/bin/oninit1"
 String          EXEC_PATH = "/home/linchanghui/Documents/oninit"
@@ -366,9 +366,9 @@ for(int i=0;i<log_filtered.size();i++) {
             item.weight = item.weight + 1
     }
     if(item.weight != null && item.weight >= WEIGHT_LEVEL_1 && item.weight < WEIGHT_LEVEL_2) {
-        item.color = "blue"
-    }else if(item.weight != null && item.weight >= WEIGHT_LEVEL_2) {
         item.color = "red"
+    }else if(item.weight != null && item.weight >= WEIGHT_LEVEL_2) {
+        item.color = "blue"
     }
 }
 
@@ -397,58 +397,60 @@ for(int i=0;i<log_filtered.size();i++){
 
     if(START_FUNC != null && start<1) continue
     if (log_filtered[i]["delete"] != null && log_filtered[i]["delete"]) continue
-        if(log_filtered[i].direct == ">") {
-            if(stack.empty()==false){
-                String fromFunctionName
-                if(peekFlag) {
-                    if( (stack.peek())["name"] == oldToFunctionName) {
-                        /*
-                       名字相同代表有子节点
-                       a -> b1
-                       b1 -> c
-                       */
-                        fromFunctionName = peekValue
-                    }else {
-                        /*
-                        名字不相同代表没有子节点
-                        a -> b1
-                        c -> d
-                        */
-                        fromFunctionName = (stack.peek())["name"]
-                    }
-                    peekFlag = false
-                }else {
+    if (log_filtered[i].direct == ">") {
+        if (stack.empty() == false) {
+            String fromFunctionName
+            if (peekFlag) {
+                if ((stack.peek())["name"] == oldToFunctionName) {
+                    /*
+                   名字相同代表有子节点
+                   a -> b1
+                   b1 -> c
+                   */
+                    fromFunctionName = peekValue
+                } else {
+                    /*
+                    名字不相同代表没有子节点
+                    a -> b1
+                    c -> d
+                    */
                     fromFunctionName = (stack.peek())["name"]
                 }
-
-                String toFunctionName
-                if(log_filtered[i].accessCount == 1 ) {
-                    toFunctionName = log_filtered[i].name
-                }else{
-                    //一旦toFunctionName是需要特殊处理的,就对peekFlag标志位赋值
-                    //并保留下一个fromFunctionName可能的值peekValue，oldToFunctionName是为了处理万一这个toFunctionName没有再调用别的函数，则不需要修改下一个fromFunctionName
-                    toFunctionName = (log_filtered[i].name+"_"+log_filtered[i].accessCount)
-                    peekValue = toFunctionName
-                    oldToFunctionName = log_filtered[i].name
-                    peekFlag = true
-                }
-
-                edgeOutput << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
-                //这里去把所有的节点记录下来
-                nodeOutput << """    ${toFunctionName} [${log_filtered[i].color == null?"":"""fontcolor="${log_filtered[i].color}","""} tooltip="${log_filtered[i]}"];"""
-                nodeOutput << """    ${fromFunctionName} [${stack.peek().color == null?"":"""fontcolor="${stack.peek().color}","""}  tooltip="${stack.peek()}"];"""
-
+                peekFlag = false
+            } else {
+                fromFunctionName = (stack.peek())["name"]
             }
 
-            stack.push(log_filtered[i])
-        }else{
-//            if(!stack.empty()) {
-                stack.pop()
-//            }else {
-//                println "dddd"
-//            }
+            String toFunctionName
+            if (log_filtered[i].accessCount == 1) {
+                toFunctionName = log_filtered[i].name
+            } else {
+                //一旦toFunctionName是需要特殊处理的,就对peekFlag标志位赋值
+                //并保留下一个fromFunctionName可能的值peekValue，oldToFunctionName是为了处理万一这个toFunctionName没有再调用别的函数，则不需要修改下一个fromFunctionName
+                toFunctionName = (log_filtered[i].name + "_" + log_filtered[i].accessCount)
+                peekValue = toFunctionName
+                oldToFunctionName = log_filtered[i].name
+                peekFlag = true
+            }
+
+            edgeOutput << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
+            //这里去把所有的节点记录下来
+            nodeOutput << """    ${toFunctionName} [
+            ${log_filtered[i].color == null ? "" : """fontcolor="${log_filtered[i].color}","""}
+            label="${log_filtered[i].name} \n${log_filtered[i].module} (${log_filtered[i].file})"
+            tooltip="weight:${log_filtered[i].weight}\naccessCount:${log_filtered[i].accessCount}"];"""
+
+            nodeOutput << """    ${fromFunctionName} [
+            ${stack.peek().color == null ? "" : """fontcolor="${stack.peek().color}","""}
+            label="${stack.peek().name} \n${stack.peek().module} (${stack.peek().file})"
+            tooltip="weight:${stack.peek().weight}\naccessCount:${stack.peek().accessCount}"];"""
+
         }
-//    }
+
+        stack.push(log_filtered[i])
+    } else {
+        stack.pop()
+    }
 }
 output.add(0,"digraph trace{")
 output.add(1,"""

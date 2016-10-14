@@ -440,13 +440,13 @@ for(int i=0;i<log_filtered.size();i++){
             //这里去把所有的节点记录下来
             nodeOutput << """    ${toFunctionName} [
             ${log_filtered[i].color == null ? "" : """fontcolor="${log_filtered[i].color}","""}
-            label="${log_filtered[i].name} \n${log_filtered[i].module} (${log_filtered[i].file})"
-            tooltip="weight:${log_filtered[i].weight}\naccessCount:${log_filtered[i].accessCount}"];"""
+            label="${log_filtered[i].name}"
+            tooltip=""];"""
 
             nodeOutput << """    ${fromFunctionName} [
             ${stack.peek().color == null ? "" : """fontcolor="${stack.peek().color}","""}
-            label="${stack.peek().name} \n${stack.peek().module} (${stack.peek().file})"
-            tooltip="weight:${stack.peek().weight}\naccessCount:${stack.peek().accessCount}"];"""
+            label="${stack.peek().name}"
+            tooltip=""];"""
 
         }
 

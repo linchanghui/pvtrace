@@ -1,4 +1,4 @@
-Rm -f *.trc ANA_* FUNCS*
+rm -f *.trc ANA_* FUNCS*
 
 userid informix $INFORMIXDIR/bin/oninit1 -vy
 userid informix $INFORMIXDIR/bin/onmode1 -e OFF

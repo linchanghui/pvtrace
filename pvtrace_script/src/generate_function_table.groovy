@@ -441,12 +441,12 @@ for(int i=0;i<log_filtered.size();i++){
             nodeOutput << """    ${toFunctionName} [
             ${log_filtered[i].color == null ? "" : """fontcolor="${log_filtered[i].color}","""}
             label="${log_filtered[i].name}"
-            tooltip=""];"""
+            tooltip="module:${log_filtered[i].module} file:${log_filtered[i].file}"];"""
 
             nodeOutput << """    ${fromFunctionName} [
             ${stack.peek().color == null ? "" : """fontcolor="${stack.peek().color}","""}
             label="${stack.peek().name}"
-            tooltip=""];"""
+            tooltip="module:${stack.peek().module} file:${stack.peek().file}"];"""
 
         }
 

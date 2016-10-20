@@ -194,8 +194,6 @@ raw_lines.each{String line->
         println "error data :"+fields[1]
     }
 
-    //println log
-
     log_lines.add(log)
 }
 //移除调用次数超过FUNC_MAX_CALL_TIMES的调用记录(仅统计调用，不统计退出)
@@ -217,7 +215,7 @@ log_lines.each{ Map<String, String> line->
 //根据方法的被调用次数，做过滤，调用次数太多的不记录
 //-----------------------------------------------------------------------------
 log_lines.each { Map<String, String> line ->
-    if(FUNC_MAX_CALL_TIMES != -1 && call_statistics[line["name"]]<=FUNC_MAX_CALL_TIMES){
+    if(line.name == FUNC_HINT || (FUNC_MAX_CALL_TIMES != -1 && call_statistics[line["name"]]<=FUNC_MAX_CALL_TIMES)){
         log_filtered.add(line)
     }
 }
@@ -327,10 +325,19 @@ for(int i=0;i<log_filtered.size();i++){
 //-----------------------------------------------------------------------------
 //生成调用说明TXT
 //-----------------------------------------------------------------------------
+boolean flag = false
+
 for(int i=0;i<log_filtered.size();i++){
     if(log_filtered[i].distance >= TRACE_MIN_DISTANCE && log_filtered[i].level <= TRACE_MAX_LEVEL) {
+        if(START_FUNC != null && log_filtered[i].name == START_FUNC && log_filtered[i].direct == ">") {
+            flag = true
+        }
+        if(flag)
+            println "  " * log_filtered[i].level + "${log_filtered[i].direct} ${log_filtered[i].name} ${log_filtered[i].module}/${log_filtered[i].file}"
+        if(START_FUNC != null && log_filtered[i].name == START_FUNC && log_filtered[i].direct == "<") {
+            flag = false
+        }
 
-        println "  " * log_filtered[i].level + "${log_filtered[i].direct} ${log_filtered[i].name} ${log_filtered[i].module}/${log_filtered[i].file}"
     }
 }
 
@@ -339,7 +346,7 @@ for(int i=0;i<log_filtered.size();i++){
 //-----------------------------------------------------------------------------
 for(int i=0;i<log_filtered.size();i++) {
     Map item = log_filtered[i]
-    if (item.distance < TRACE_MIN_DISTANCE || item.level > TRACE_MAX_LEVEL) {
+    if (item.name != FUNC_HINT && (item.distance < TRACE_MIN_DISTANCE || item.level > TRACE_MAX_LEVEL)) {
         item["delete"] = true
     }
     //为进入，且判断是否正常删除
@@ -379,6 +386,8 @@ for(int i=0;i<log_filtered.size();i++) {
 //生成DOT文件
 //-----------------------------------------------------------------------------
 Stack <Map> stack=[]
+Stack <Map> renameStack=[]
+
 List<String> edgeOutput=[]
 Set<String> nodeOutput = []
 
@@ -390,7 +399,7 @@ String peekValue
 String oldToFunctionName
 for(int i=0;i<log_filtered.size();i++){
 
-    //todo 通过加标志位，在这里去做拦截，找到关键函数名且为>则加1,为<则减1，大于零则记录
+    //todo 筛选起始函数,找到关键函数名且为>则加1,为<则减1，大于零则记录
     if(START_FUNC != null && START_FUNC == log_filtered[i]["name"] && log_filtered[i]["direct"]==">") {
         start++
     }
@@ -399,30 +408,31 @@ for(int i=0;i<log_filtered.size();i++){
     }
 
     if(START_FUNC != null && start<1) continue
-    if (log_filtered[i]["delete"] != null && log_filtered[i]["delete"]) continue
+    if (log_filtered[i]["delete"] != null && log_filtered[i]["delete"]) {
+        continue
+    }else if(log_filtered[log_filtered[i].pair]["delete"] != null && log_filtered[log_filtered[i].pair]["delete"]) {
+        continue
+    }
     if (log_filtered[i].direct == ">") {
         if (stack.empty() == false) {
             String fromFunctionName
-            if (peekFlag) {
-                if ((stack.peek())["name"] == oldToFunctionName) {
-                    /*
-                   名字相同代表有子节点
-                   a -> b1
-                   b1 -> c
-                   */
-                    fromFunctionName = peekValue
-                } else {
-                    /*
-                    名字不相同代表没有子节点
-                    a -> b1
-                    c -> d
-                    */
-                    fromFunctionName = (stack.peek())["name"]
-                }
-                peekFlag = false
+
+            if (!renameStack.empty() && (stack.peek())["name"] == renameStack.peek().oldToFunctionName) {
+                /*
+               名字相同代表有子节点
+               a -> b1
+               b1 -> c
+               */
+                fromFunctionName = renameStack.peek().peekValue
             } else {
+                /*
+                名字不相同代表没有子节点
+                a -> b1
+                c -> d
+                */
                 fromFunctionName = (stack.peek())["name"]
             }
+
 
             String toFunctionName
             if (log_filtered[i].accessCount == 1) {
@@ -433,7 +443,8 @@ for(int i=0;i<log_filtered.size();i++){
                 toFunctionName = (log_filtered[i].name + "_" + log_filtered[i].accessCount)
                 peekValue = toFunctionName
                 oldToFunctionName = log_filtered[i].name
-                peekFlag = true
+                //进栈
+                renameStack.push([toFunctionName:toFunctionName,peekValue:peekValue,oldToFunctionName:oldToFunctionName])
             }
 
             edgeOutput << """    ${fromFunctionName} -> ${toFunctionName} [label="${j++}"];"""
@@ -452,6 +463,8 @@ for(int i=0;i<log_filtered.size();i++){
 
         stack.push(log_filtered[i])
     } else {
+        //出栈
+        if(!renameStack.empty() && renameStack.peek().oldToFunctionName == stack.peek().name)  renameStack.pop()
         stack.pop()
     }
 }
